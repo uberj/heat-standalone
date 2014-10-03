@@ -1,0 +1,146 @@
+heat_template_version: 2013-05-23
+
+parameters:
+  stack_user:
+    type: string
+    description: >
+      Make sure you have ssh access via this user
+  key_name:
+    type: string
+  flavor:
+    type: string
+    default: m1.medium
+  image:
+    type: string
+    description: >
+      Assumes some ubuntu derivative
+
+  keystone_auth_host:
+    type: string
+
+  public_net_id:
+    type: string
+    description: >
+      ID of public network for which floating IP addresses will be allocated
+  private_net_id:
+    type: string
+    description: ID of private network into which heat server is to be deployed
+  private_subnet_id:
+    type: string
+    description: ID of private sub network into which heat server is to be deployed
+
+resources:
+  sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Enable traffic external traffic on SSH.
+      rules:
+        - {protocol: tcp, port_range_max: 22, port_range_min: 22}
+        - {protocol: tcp, port_range_max: 80, port_range_min: 80}
+        - {protocol: tcp, port_range_max: 65535, port_range_min: 1, remote_mode: remote_group_id}
+        - {protocol: icmp}
+
+  heat_server:
+    type: OS::Nova::Server
+    properties:
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      key_name: {get_param: key_name}
+      user_data_format: SOFTWARE_CONFIG
+      networks:
+        - port: { get_resource: heat_port }
+
+  heat_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: private_net_id }
+      fixed_ips:
+        - subnet_id: { get_param: private_subnet_id }
+      security_groups:
+        - { get_resource: sg }
+
+  heat_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_net_id }
+      port_id: { get_resource: heat_port }
+
+  heat_config:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: keystone_auth_port
+          default: '35357'
+        - name: password
+          default: toor
+        - name: user
+        - name: keystone_auth_host
+        - name: host_ip
+      config: |
+        #!/bin/bash
+        set -x
+        aptitude -y update
+        aptitude -y install vim python-mysqldb libffi-dev libxml2-dev libxslt-dev git python-dev screen
+        mkdir /data/
+        pushd /data/
+          git clone https://github.com/openstack-dev/devstack.git
+          cat <<EOF > ./devstack/localrc
+          ENABLE_DEBUG_LOG_LEVEL=true
+          SYSLOG="True"
+
+          MY_PASSWORD=toor
+
+          HOST_IP=$host_ip
+          # http://docs.openstack.org/developer/heat/getting_started/standalone.html
+          HEAT_STANDALONE=True
+          KEYSTONE_AUTH_HOST=$keystone_auth_host
+          KEYSTONE_AUTH_PORT=$keystone_auth_port
+          KEYSTONE_AUTH_PROTOCOL=http
+          KEYSTONE_SERVICE_HOST=$keystone_auth_host
+          KEYSTONE_SERVICE_PORT=$keystone_auth_port
+          KEYSTONE_SERVICE_PROTOCOL=http
+
+          DATABASE_PASSWORD=$password
+          RABBIT_PASSWORD=$password
+
+          disable_all_services
+          enable_service mysql heat rabbit h-api h-api-cfn h-api-cw h-eng
+        EOF
+          chown -R $user devstack
+          pushd devstack
+              sudo -u $user ./stack.sh
+          popd
+        popd
+
+
+  # Deploy and place application specific data onto the apache/app webserver
+  heat_deploy:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      config:
+        get_resource: heat_config
+      server:
+        # Install the app config on the web server
+        get_resource: heat_server
+      input_values:
+        keystone_auth_host:
+          get_param: keystone_auth_host
+        host_ip:
+          get_attr: [ heat_server, first_address ]
+        user:
+          get_param: stack_user
+
+outputs:
+  # DB output
+  heat_stdout:
+    value:
+      get_attr: [heat_deploy, deploy_stdout]
+  heat_stderr:
+    value:
+      get_attr: [heat_deploy, deploy_stderr]
+
+  # The IP address to point your browser at
+  heat_public_ip:
+    description: Floating IP address of webserver in public network
+    value: { get_attr: [ heat_floating_ip, floating_ip_address ] }
