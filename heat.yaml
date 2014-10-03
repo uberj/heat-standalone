@@ -33,10 +33,9 @@ resources:
   sg:
     type: OS::Neutron::SecurityGroup
     properties:
-      description: Enable traffic external traffic on SSH.
+      description: Open all the ports!
       rules:
-        - {protocol: tcp, port_range_max: 22, port_range_min: 22}
-        - {protocol: tcp, port_range_max: 80, port_range_min: 80}
+        - {protocol: tcp, port_range_max: 65535, port_range_min: 1}
         - {protocol: tcp, port_range_max: 65535, port_range_min: 1, remote_mode: remote_group_id}
         - {protocol: icmp}
 
@@ -140,7 +139,6 @@ outputs:
     value:
       get_attr: [heat_deploy, deploy_stderr]
 
-  # The IP address to point your browser at
   heat_public_ip:
     description: Floating IP address of webserver in public network
     value: { get_attr: [ heat_floating_ip, floating_ip_address ] }
