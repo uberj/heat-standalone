@@ -5,6 +5,7 @@ parameters:
     type: string
     description: >
       Make sure you have ssh access via this user
+
   key_name:
     type: string
   flavor:
@@ -47,22 +48,22 @@ resources:
       key_name: {get_param: key_name}
       user_data_format: SOFTWARE_CONFIG
       networks:
-        - port: { get_resource: heat_port }
+        - port: {get_resource: heat_port}
 
   heat_port:
     type: OS::Neutron::Port
     properties:
-      network_id: { get_param: private_net_id }
+      network_id: {get_param: private_net_id}
       fixed_ips:
-        - subnet_id: { get_param: private_subnet_id }
+        - subnet_id: {get_param: private_subnet_id}
       security_groups:
-        - { get_resource: sg }
+        - {get_resource: sg}
 
   heat_floating_ip:
     type: OS::Neutron::FloatingIP
     properties:
-      floating_network_id: { get_param: public_net_id }
-      port_id: { get_resource: heat_port }
+      floating_network_id: {get_param: public_net_id}
+      port_id: {get_resource: heat_port}
 
   heat_config:
     type: OS::Heat::SoftwareConfig
@@ -123,7 +124,7 @@ resources:
         keystone_auth_host:
           get_param: keystone_auth_host
         host_ip:
-          get_attr: [ heat_server, first_address ]
+          get_attr: [heat_server, first_address]
         user:
           get_param: stack_user
 
@@ -137,4 +138,4 @@ outputs:
 
   heat_public_ip:
     description: Floating IP address of webserver in public network
-    value: { get_attr: [ heat_floating_ip, floating_ip_address ] }
+    value: {get_attr: [heat_floating_ip, floating_ip_address]}
