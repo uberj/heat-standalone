@@ -112,15 +112,12 @@ resources:
           popd
         popd
 
-
-  # Deploy and place application specific data onto the apache/app webserver
   heat_deploy:
     type: OS::Heat::SoftwareDeployment
     properties:
       config:
         get_resource: heat_config
       server:
-        # Install the app config on the web server
         get_resource: heat_server
       input_values:
         keystone_auth_host:
@@ -131,7 +128,6 @@ resources:
           get_param: stack_user
 
 outputs:
-  # DB output
   heat_stdout:
     value:
       get_attr: [heat_deploy, deploy_stdout]
